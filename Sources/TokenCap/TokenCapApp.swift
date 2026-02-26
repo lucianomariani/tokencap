@@ -62,5 +62,20 @@ struct TokenCapApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+
+        // MenuBarExtra(.window) creates an NSPanel that auto-hides when it
+        // loses key status. Button clicks can trigger that focus loss.
+        // Setting becomesKeyOnlyIfNeeded prevents the resign-key cycle.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidBecomeKey(_:)),
+            name: NSWindow.didBecomeKeyNotification,
+            object: nil
+        )
+    }
+
+    @objc private func windowDidBecomeKey(_ notification: Notification) {
+        guard let panel = notification.object as? NSPanel else { return }
+        panel.becomesKeyOnlyIfNeeded = true
     }
 }
