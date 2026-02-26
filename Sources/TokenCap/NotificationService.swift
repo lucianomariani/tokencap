@@ -4,8 +4,16 @@ import UserNotifications
 @MainActor
 final class NotificationService: ObservableObject {
     private var firedThresholds: [String: Set<Int>] = [:]
+    private let isAvailable: Bool
+
+    init() {
+        // UNUserNotificationCenter crashes without a proper app bundle (e.g. swift run).
+        // Guard all access behind this flag.
+        self.isAvailable = Bundle.main.bundleIdentifier != nil
+    }
 
     func requestPermission() {
+        guard isAvailable else { return }
         UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound, .badge]
         ) { _, error in
@@ -61,6 +69,8 @@ final class NotificationService: ObservableObject {
         key: String, label: String, threshold: Int,
         utilization: Double, bucket: UsageBucket
     ) {
+        guard isAvailable else { return }
+
         let content = UNMutableNotificationContent()
         content.title = "\(label) at \(threshold)%"
 
