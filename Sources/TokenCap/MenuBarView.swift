@@ -1,22 +1,12 @@
 import SwiftUI
 
-// MARK: - Brand Colors
+// MARK: - Brand Colors (adaptive)
 
 extension Color {
     static let brand = Color(red: 0.851, green: 0.482, blue: 0.247) // #D97B3F
-    static let brandBg = Color(red: 1.0, green: 0.973, blue: 0.953) // #FFF8F3
-    static let brandLighter = Color(red: 0.980, green: 0.745, blue: 0.678) // #FABEAD
-
     static let statusGreen = Color(red: 0.204, green: 0.780, blue: 0.349) // #34C759
     static let statusYellow = Color(red: 1.0, green: 0.722, blue: 0.0) // #FFB800
     static let statusRed = Color(red: 1.0, green: 0.231, blue: 0.188) // #FF3B30
-
-    static let greenBg = Color(red: 0.941, green: 1.0, blue: 0.957) // #F0FFF4
-    static let yellowBg = Color(red: 1.0, green: 0.984, blue: 0.941) // #FFFBF0
-    static let redBg = Color(red: 1.0, green: 0.953, blue: 0.941) // #FFF3F0
-
-    static let surfaceBg = Color(red: 0.961, green: 0.961, blue: 0.969) // #F5F5F7
-    static let borderLine = Color(red: 0.898, green: 0.898, blue: 0.918) // #E5E5EA
 
     static func statusColor(for level: UsageLevel) -> Color {
         switch level {
@@ -25,21 +15,12 @@ extension Color {
         case .high: return .statusRed
         }
     }
-
-    static func statusBg(for level: UsageLevel) -> Color {
-        switch level {
-        case .low: return .greenBg
-        case .medium: return .yellowBg
-        case .high: return .redBg
-        }
-    }
 }
 
 // MARK: - Tab
 
 enum MenuTab: String, CaseIterable {
-    case session = "Session"
-    case weekly = "Weekly"
+    case usage = "Usage"
     case settings = "Settings"
 }
 
@@ -48,24 +29,22 @@ enum MenuTab: String, CaseIterable {
 struct MenuBarView: View {
     @ObservedObject var service: UsageService
     @ObservedObject var settings: SettingsManager
-    @State private var selectedTab: MenuTab = .session
+    @State private var selectedTab: MenuTab = .usage
 
     var body: some View {
         VStack(spacing: 0) {
             headerSection
             tabBar
 
-            switch selectedTab {
-            case .session:
-                sessionTab
-            case .weekly:
-                weeklyTab
-            case .settings:
-                ScrollView {
+            ScrollView {
+                switch selectedTab {
+                case .usage:
+                    usageTab
+                case .settings:
                     settingsTab
                 }
-                .frame(maxHeight: 360)
             }
+            .frame(maxHeight: 420)
 
             Divider()
             footerSection
@@ -78,7 +57,7 @@ struct MenuBarView: View {
     private var headerSection: some View {
         HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 7)
-                .fill(headerIconBg)
+                .fill(Color.brand.opacity(0.15))
                 .frame(width: 30, height: 30)
                 .overlay(
                     Image(systemName: "gauge.with.needle.fill")
@@ -103,13 +82,6 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
-    }
-
-    private var headerIconBg: Color {
-        if service.error != nil && service.usage == nil {
-            return .redBg
-        }
-        return Color.statusBg(for: service.sessionUsageLevel)
     }
 
     // MARK: - Tab Bar
@@ -139,10 +111,11 @@ struct MenuBarView: View {
         .padding(.top, 12)
     }
 
-    // MARK: - Session Tab
+    // MARK: - Usage Tab (merged session + weekly)
 
-    private var sessionTab: some View {
+    private var usageTab: some View {
         VStack(spacing: 0) {
+            // Session hero gauge
             if let usage = service.usage, let fiveHour = usage.fiveHour {
                 heroGauge(bucket: fiveHour)
 
@@ -157,6 +130,9 @@ struct MenuBarView: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 12)
                 }
+
+                // Weekly breakdown
+                weeklySection(usage)
             } else if let error = service.error {
                 errorGaugeSection
                     .padding(.horizontal, 16)
@@ -171,11 +147,21 @@ struct MenuBarView: View {
         }
     }
 
-    // MARK: - Weekly Tab
+    // MARK: - Weekly Section
 
-    private var weeklyTab: some View {
-        VStack(spacing: 8) {
-            if let usage = service.usage {
+    @ViewBuilder
+    private func weeklySection(_ usage: UsageResponse) -> some View {
+        let hasWeekly = usage.sevenDay != nil || usage.sevenDaySonnet != nil
+            || usage.sevenDayOpus != nil || usage.sevenDayOauthApps != nil
+            || usage.sevenDayCowork != nil
+
+        if hasWeekly {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("WEEKLY")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .tracking(0.5)
+
                 if let sevenDay = usage.sevenDay {
                     gaugeRow(label: "All Models", bucket: sevenDay)
                 }
@@ -191,15 +177,10 @@ struct MenuBarView: View {
                 if let cowork = usage.sevenDayCowork {
                     gaugeRow(label: "Cowork", bucket: cowork)
                 }
-            } else if let error = service.error {
-                errorCard(error)
-            } else {
-                Text("Loading...")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
         }
-        .padding(16)
     }
 
     // MARK: - Settings Tab
@@ -268,7 +249,7 @@ struct MenuBarView: View {
 
                 VStack(spacing: 8) {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.brandBg)
+                        .fill(Color.brand.opacity(0.15))
                         .frame(width: 48, height: 48)
                         .overlay(
                             Image(systemName: "gauge.with.needle.fill")
@@ -299,12 +280,10 @@ struct MenuBarView: View {
 
         return VStack(spacing: 8) {
             ZStack {
-                // Track
                 Circle()
                     .inset(by: 12)
-                    .stroke(Color.borderLine, lineWidth: 8)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 8)
 
-                // Fill arc
                 Circle()
                     .inset(by: 12)
                     .trim(from: 0, to: fraction)
@@ -312,7 +291,6 @@ struct MenuBarView: View {
                     .rotationEffect(.degrees(-90))
                     .animation(.easeInOut(duration: 0.6), value: bucket.utilization)
 
-                // Center text
                 VStack(spacing: 0) {
                     HStack(alignment: .firstTextBaseline, spacing: 0) {
                         Text("\(Int(bucket.utilization))")
@@ -353,7 +331,7 @@ struct MenuBarView: View {
             ZStack {
                 Circle()
                     .inset(by: 12)
-                    .stroke(Color.borderLine, style: StrokeStyle(lineWidth: 8, dash: [4, 8]))
+                    .stroke(Color.primary.opacity(0.1), style: StrokeStyle(lineWidth: 8, dash: [4, 8]))
 
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text("--")
@@ -375,7 +353,7 @@ struct MenuBarView: View {
             ZStack {
                 Circle()
                     .inset(by: 12)
-                    .stroke(Color.borderLine, lineWidth: 8)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 8)
 
                 ProgressView()
             }
@@ -397,11 +375,10 @@ struct MenuBarView: View {
         let fraction = min(bucket.utilization, 100) / 100
 
         return HStack(spacing: 12) {
-            // Mini gauge
             ZStack {
                 Circle()
                     .inset(by: 6)
-                    .stroke(Color.borderLine, lineWidth: 5)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 5)
 
                 Circle()
                     .inset(by: 6)
@@ -416,15 +393,20 @@ struct MenuBarView: View {
             }
             .frame(width: 44, height: 44)
 
-            // Info
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.system(size: 13, weight: .semibold))
 
                 if let remaining = bucket.resetTimeRemaining {
-                    Text("Resets in \(remaining)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(level == .high ? Color.statusRed : Color(red: 0.682, green: 0.682, blue: 0.698))
+                    if level == .high {
+                        Text("Resets in \(remaining)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.statusRed)
+                    } else {
+                        Text("Resets in \(remaining)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
 
@@ -437,7 +419,7 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.surfaceBg, in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Extra Usage Card
@@ -445,45 +427,22 @@ struct MenuBarView: View {
     private func extraUsageCard(_ extra: ExtraUsage) -> some View {
         let extraLevel: UsageLevel = extra.utilization.map { UsageLevel.from($0) } ?? .low
         let extraColor = Color.statusColor(for: extraLevel)
-
-        let bgColor: Color = {
-            switch extraLevel {
-            case .low: return .brandBg
-            case .medium: return .yellowBg
-            case .high: return .redBg
-            }
-        }()
-
-        let strokeColor: Color = {
-            switch extraLevel {
-            case .low: return .brandLighter
-            case .medium: return Color(red: 1.0, green: 0.878, blue: 0.627) // #FFE0A0
-            case .high: return Color(red: 1.0, green: 0.812, blue: 0.776) // #FFCFC6
-            }
-        }()
-
-        let labelColor: Color = {
-            switch extraLevel {
-            case .low: return .brand
-            case .medium: return .statusYellow
-            case .high: return .statusRed
-            }
-        }()
+        let tintColor: Color = extraLevel == .low ? .brand : Color.statusColor(for: extraLevel)
 
         return HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 8)
-                .fill(.white)
+                .fill(Color.primary.opacity(0.05))
                 .frame(width: 32, height: 32)
                 .overlay(
                     Image(systemName: "creditcard.fill")
                         .font(.system(size: 15))
-                        .foregroundStyle(Color.brand)
+                        .foregroundStyle(tintColor)
                 )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Extra Usage")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(labelColor)
+                    .foregroundStyle(tintColor)
 
                 if let used = extra.usedCredits, let limit = extra.monthlyLimit {
                     Text(String(format: "$%.2f / $%d", used / 100, limit / 100))
@@ -507,10 +466,10 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(bgColor, in: RoundedRectangle(cornerRadius: 10))
+        .background(tintColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(strokeColor, lineWidth: 1)
+                .stroke(tintColor.opacity(0.2), lineWidth: 1)
         )
     }
 
@@ -525,7 +484,7 @@ struct MenuBarView: View {
 
                 Text(error.localizedDescription)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.843, green: 0.227, blue: 0.169))
+                    .foregroundStyle(Color.statusRed)
             }
 
             if let suggestion = error.recoverySuggestion {
@@ -549,10 +508,10 @@ struct MenuBarView: View {
             }
         }
         .padding(14)
-        .background(Color.redBg, in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.statusRed.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color(red: 1.0, green: 0.812, blue: 0.776), lineWidth: 1)
+                .stroke(Color.statusRed.opacity(0.2), lineWidth: 1)
         )
     }
 
@@ -571,12 +530,12 @@ struct MenuBarView: View {
                 } label: {
                     Text("\(threshold)%")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(isActive ? Color.white : Color(red: 0.682, green: 0.682, blue: 0.698))
+                        .foregroundStyle(isActive ? Color.white : .secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 5)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(isActive ? Color.statusColor(for: level) : Color.surfaceBg)
+                                .fill(isActive ? Color.statusColor(for: level) : Color.primary.opacity(0.05))
                         )
                 }
                 .buttonStyle(.plain)
@@ -603,7 +562,7 @@ struct MenuBarView: View {
             HStack(spacing: 10) {
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.surfaceBg)
+                        .fill(Color.primary.opacity(0.06))
                         .frame(width: 14, height: 14)
                         .overlay(
                             Text("HY")
