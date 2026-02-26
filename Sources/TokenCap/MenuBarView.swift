@@ -87,22 +87,21 @@ struct MenuBarView: View {
     private var tabBar: some View {
         HStack(spacing: 4) {
             ForEach(MenuTab.allCases, id: \.self) { tab in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        selectedTab = tab
+                Text(tab.rawValue)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(selectedTab == tab ? .white : .secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(selectedTab == tab ? Color.brand : .clear)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            selectedTab = tab
+                        }
                     }
-                } label: {
-                    Text(tab.rawValue)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(selectedTab == tab ? .white : .secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(selectedTab == tab ? Color.brand : .clear)
-                        )
-                }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)
