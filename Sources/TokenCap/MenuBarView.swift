@@ -466,17 +466,15 @@ struct MenuBarView: View {
             .buttonStyle(.plain)
 
             HStack(spacing: 2) {
-                if selectedTab != .settings {
-                    Button {
-                        Task { await service.fetchUsage() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .padding(4)
-                    }
-                    .buttonStyle(.plain)
+                Button {
+                    Task { await service.fetchUsage() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .padding(4)
                 }
+                .buttonStyle(.plain)
 
                 Button {
                     NSApplication.shared.terminate(nil)
