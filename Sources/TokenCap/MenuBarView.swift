@@ -44,7 +44,7 @@ struct MenuBarView: View {
                     settingsTab
                 }
             }
-            .frame(maxHeight: 420)
+            .frame(maxHeight: 480)
 
             Divider()
             footerSection
