@@ -3,8 +3,14 @@ import SwiftUI
 @main
 struct TokenCapApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var usageService = UsageService()
     @StateObject private var settings = SettingsManager.shared
+    @StateObject private var usageService: UsageService
+
+    init() {
+        let settings = SettingsManager.shared
+        _settings = StateObject(wrappedValue: settings)
+        _usageService = StateObject(wrappedValue: UsageService(settings: settings))
+    }
     @StateObject private var notifications = NotificationService()
 
     var body: some Scene {

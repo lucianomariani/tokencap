@@ -248,6 +248,50 @@ struct MenuBarView: View {
                 }
             }
 
+            // Claude Code
+            VStack(alignment: .leading, spacing: 8) {
+                sectionTitle("CLAUDE CODE")
+
+                VStack(alignment: .leading, spacing: 6) {
+                    settingRow {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Config directory")
+                                .font(.system(size: 13))
+                            Text(settings.customConfigDir ?? "~/.claude (default)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    } control: {
+                        HStack(spacing: 4) {
+                            if settings.customConfigDir != nil {
+                                Button {
+                                    settings.customConfigDir = nil
+                                    Task { await service.fetchUsage() }
+                                } label: {
+                                    Image(systemName: "arrow.uturn.backward")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            Button {
+                                browseForConfigDir()
+                            } label: {
+                                Text("Browse")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                            }
+                            .buttonStyle(.plain)
+                            .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+                }
+            }
+
             // About
             VStack(alignment: .leading, spacing: 8) {
                 sectionTitle("ABOUT")
@@ -263,7 +307,7 @@ struct MenuBarView: View {
                     Text("TokenCap")
                         .font(.system(size: 15, weight: .bold))
 
-                    Text("Version 1.0.1")
+                    Text("Version 1.1.0")
                         .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
                 }
@@ -385,7 +429,7 @@ struct MenuBarView: View {
     private func errorCard(_ error: UsageError) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: error.isTokenIssue ? "key.fill" : "exclamationmark.triangle.fill")
+                Image(systemName: error.iconName)
                     .font(.system(size: 14))
                     .foregroundStyle(Color.statusRed)
 
@@ -565,12 +609,26 @@ struct MenuBarView: View {
         .padding(.vertical, 8)
     }
 
+    private func browseForConfigDir() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Select your Claude config directory (contains .credentials.json)"
+        panel.directoryURL = URL(fileURLWithPath: FileManager.default.homeDirectoryForCurrentUser.path)
+
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.customConfigDir = url.path
+            Task { await service.fetchUsage() }
+        }
+    }
+
     private func openTerminalWithClaude() {
         AnalyticsService.shared.track("open_terminal")
         let script = """
         tell application "Terminal"
             activate
-            do script "claude"
+            do script "claude login"
         end tell
         """
         if let appleScript = NSAppleScript(source: script) {

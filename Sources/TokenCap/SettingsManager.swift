@@ -30,6 +30,10 @@ final class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(analyticsEnabled, forKey: "analyticsEnabled") }
     }
 
+    @Published var customConfigDir: String? {
+        didSet { UserDefaults.standard.set(customConfigDir, forKey: "customConfigDir") }
+    }
+
     private init() {
         let defaults = UserDefaults.standard
         defaults.register(defaults: [
@@ -45,12 +49,21 @@ final class SettingsManager: ObservableObject {
         self.notificationsEnabled = defaults.bool(forKey: "notificationsEnabled")
 
         self.analyticsEnabled = defaults.bool(forKey: "analyticsEnabled")
+        self.customConfigDir = defaults.string(forKey: "customConfigDir")
 
         if let saved = defaults.array(forKey: "enabledThresholds") as? [Int] {
             self.enabledThresholds = Set(saved)
         } else {
             self.enabledThresholds = [50, 75, 80, 90]
         }
+    }
+
+    var credentialsPath: String {
+        if let custom = customConfigDir, !custom.isEmpty {
+            return "\(custom)/.credentials.json"
+        }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return "\(home)/.claude/.credentials.json"
     }
 
     func toggleThreshold(_ threshold: Int) {

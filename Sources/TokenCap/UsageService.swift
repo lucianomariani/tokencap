@@ -8,33 +8,38 @@ final class UsageService: ObservableObject {
     @Published var error: UsageError?
     @Published var isLoading: Bool = false
 
-    private let credentialsPath: String
+    private let settings: SettingsManager
     private let apiURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private var pollTimer: Timer?
     private var lastTrackedLevel: UsageLevel?
 
-    init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        self.credentialsPath = "\(home)/.claude/.credentials.json"
+    init(settings: SettingsManager) {
+        self.settings = settings
     }
 
     // MARK: - Token Management
 
     func readAccessToken() throws -> String {
+        let credentialsPath = settings.credentialsPath
         let url = URL(fileURLWithPath: credentialsPath)
+        let claudeDir = (credentialsPath as NSString).deletingLastPathComponent
+        let dirExists = FileManager.default.fileExists(atPath: claudeDir)
 
         guard FileManager.default.fileExists(atPath: credentialsPath) else {
-            throw UsageError.credentialsNotFound
+            throw dirExists ? UsageError.oauthLoginRequired : UsageError.claudeCodeNotInstalled
         }
 
         let data = try Data(contentsOf: url)
-        let credentials = try JSONDecoder().decode(CredentialsFile.self, from: data)
 
-        if credentials.claudeAiOauth.isExpired {
-            throw UsageError.tokenExpired(credentials.claudeAiOauth.expirationDate)
+        do {
+            let credentials = try JSONDecoder().decode(CredentialsFile.self, from: data)
+            if credentials.claudeAiOauth.isExpired {
+                throw UsageError.tokenExpired(credentials.claudeAiOauth.expirationDate)
+            }
+            return credentials.claudeAiOauth.accessToken
+        } catch is DecodingError {
+            throw UsageError.unsupportedFormat
         }
-
-        return credentials.claudeAiOauth.accessToken
     }
 
     // MARK: - API Fetching
@@ -51,7 +56,7 @@ final class UsageService: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("tokencap/0.1.0", forHTTPHeaderField: "User-Agent")
+            request.setValue("tokencap/1.1.0", forHTTPHeaderField: "User-Agent")
             request.timeoutInterval = 15
 
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -135,7 +140,9 @@ final class UsageService: ObservableObject {
 // MARK: - Errors
 
 enum UsageError: LocalizedError {
-    case credentialsNotFound
+    case claudeCodeNotInstalled
+    case oauthLoginRequired
+    case unsupportedFormat
     case tokenExpired(Date)
     case invalidResponse
     case httpError(Int, String)
@@ -143,14 +150,28 @@ enum UsageError: LocalizedError {
 
     var isTokenIssue: Bool {
         switch self {
-        case .credentialsNotFound, .tokenExpired: return true
-        default: return false
+        case .claudeCodeNotInstalled, .oauthLoginRequired, .unsupportedFormat, .tokenExpired:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .claudeCodeNotInstalled: return "key.fill"
+        case .oauthLoginRequired: return "person.badge.key.fill"
+        case .unsupportedFormat: return "doc.questionmark.fill"
+        case .tokenExpired: return "clock.arrow.circlepath"
+        default: return "exclamationmark.triangle.fill"
         }
     }
 
     var analyticsLabel: String {
         switch self {
-        case .credentialsNotFound: return "credentials_not_found"
+        case .claudeCodeNotInstalled: return "claude_not_installed"
+        case .oauthLoginRequired: return "oauth_login_required"
+        case .unsupportedFormat: return "unsupported_format"
         case .tokenExpired: return "token_expired"
         case .invalidResponse: return "invalid_response"
         case .httpError(let code, _): return "http_\(code)"
@@ -160,8 +181,12 @@ enum UsageError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .credentialsNotFound:
+        case .claudeCodeNotInstalled:
             return "Claude Code not found"
+        case .oauthLoginRequired:
+            return "OAuth login required"
+        case .unsupportedFormat:
+            return "Unsupported credential format"
         case .tokenExpired:
             return "Session expired"
         case .invalidResponse:
@@ -175,8 +200,12 @@ enum UsageError: LocalizedError {
 
     var recoverySuggestion: String? {
         switch self {
-        case .credentialsNotFound:
+        case .claudeCodeNotInstalled:
             return "Install Claude Code and run `claude login` to authenticate."
+        case .oauthLoginRequired:
+            return "Run `claude login` in your terminal to authenticate."
+        case .unsupportedFormat:
+            return "Try running `claude login` to re-authenticate."
         case .tokenExpired:
             return "Open Claude Code to refresh your session."
         case .httpError(401, _):
