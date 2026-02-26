@@ -39,9 +39,15 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ env.VERSION }}" "$APP_DIR/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ env.VERSION }}" "$APP_DIR/Info.plist"
 
-          # Copy app icon if it exists
+          # Copy app icon
           if [ -f Resources/AppIcon.icns ]; then
             cp Resources/AppIcon.icns "$APP_DIR/Resources/AppIcon.icns"
+          fi
+
+          # Copy SPM resource bundle (brand icons, etc.)
+          RESOURCE_BUNDLE=".build/apple/Products/Release/${APP_NAME}_${APP_NAME}.bundle"
+          if [ -d "$RESOURCE_BUNDLE" ]; then
+            cp -R "$RESOURCE_BUNDLE" "$APP_DIR/Resources/"
           fi
 
       - name: Import certificate
