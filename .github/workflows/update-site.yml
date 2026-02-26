@@ -1,0 +1,81 @@
+# Update TokenCap Site on Release Publish
+#
+# When a release is published, this workflow:
+# 1. Checks out tokencap-site
+# 2. Updates lib/version.ts with the new version
+# 3. Commits and pushes to tokencap-site main
+# 4. Vercel auto-deploys
+#
+# Required Secrets:
+#   SITE_UPDATE_PAT - Fine-grained PAT with:
+#     - helsky-labs/tokencap: Contents (read)
+#     - helsky-labs/tokencap-site: Contents (read + write)
+
+name: Update Site
+
+on:
+  release:
+    types: [published]
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to use (e.g. v1.0.0)"
+        required: true
+        type: string
+
+jobs:
+  update-site:
+    name: Update tokencap-site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.event.release.tag_name }}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Using tag=$TAG version=$VERSION"
+
+      - name: Checkout tokencap-site
+        uses: actions/checkout@v4
+        with:
+          repository: helsky-labs/tokencap-site
+          token: ${{ secrets.SITE_UPDATE_PAT }}
+          path: tokencap-site
+
+      - name: Update version.ts
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          {
+            echo "export const CURRENT_VERSION = \"${VERSION}\";"
+            echo ""
+            echo 'export const GITHUB_URL = "https://github.com/helsky-labs/tokencap";'
+            echo 'export const DOWNLOAD_BASE = `${GITHUB_URL}/releases/download/v${CURRENT_VERSION}`;'
+            echo 'export const DMG_URL = `${DOWNLOAD_BASE}/TokenCap-v${CURRENT_VERSION}.dmg`;'
+            echo 'export const HOMEBREW_CMD = "brew install --cask helsky-labs/tap/tokencap";'
+          } > tokencap-site/lib/version.ts
+
+      - name: Commit and push
+        working-directory: tokencap-site
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add lib/version.ts
+          git status
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit (version already up to date)"
+            exit 0
+          fi
+
+          git commit -m "chore: update to TokenCap v${VERSION}"
+          git push origin main
