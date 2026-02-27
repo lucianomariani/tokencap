@@ -13,13 +13,12 @@ struct OAuthCredentials: Codable {
     let subscriptionType: String?
     let rateLimitTier: String?
 
-    var isExpired: Bool {
-        let expirationDate = Date(timeIntervalSince1970: Double(expiresAt) / 1000.0)
-        return Date() >= expirationDate
-    }
-
     var expirationDate: Date {
         Date(timeIntervalSince1970: Double(expiresAt) / 1000.0)
+    }
+
+    var isExpired: Bool {
+        Date() >= expirationDate
     }
 }
 
@@ -47,7 +46,7 @@ struct UsageResponse: Codable {
 
 struct UsageBucket: Codable {
     let utilization: Double
-    let resetsAt: String
+    let resetsAt: String?
 
     enum CodingKeys: String, CodingKey {
         case utilization
@@ -55,13 +54,10 @@ struct UsageBucket: Codable {
     }
 
     var resetDate: Date? {
+        guard let resetsAt else { return nil }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.date(from: resetsAt)
-    }
-
-    var utilizationColor: UsageLevel {
-        UsageLevel.from(utilization)
     }
 
     var resetTimeRemaining: String? {

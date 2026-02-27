@@ -257,7 +257,7 @@ struct MenuBarView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Config directory")
                                 .font(.system(size: 13))
-                            Text(settings.customConfigDir ?? "~/.claude (default)")
+                            Text(configDirLabel)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)
@@ -307,7 +307,7 @@ struct MenuBarView: View {
                     Text("TokenCap")
                         .font(.system(size: 15, weight: .bold))
 
-                    Text("Version 1.1.0")
+                    Text("Version 1.2.0")
                         .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
                 }
@@ -607,6 +607,18 @@ struct MenuBarView: View {
             control()
         }
         .padding(.vertical, 8)
+    }
+
+    private var configDirLabel: String {
+        if let custom = settings.customConfigDir, !custom.isEmpty {
+            return custom
+        }
+        if let detected = settings.detectedConfigDir {
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            let display = detected.replacingOccurrences(of: home, with: "~")
+            return "\(display) (auto-detected)"
+        }
+        return "~/.claude (default)"
     }
 
     private func browseForConfigDir() {

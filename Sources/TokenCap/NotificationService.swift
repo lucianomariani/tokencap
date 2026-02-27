@@ -40,10 +40,6 @@ final class NotificationService: ObservableObject {
         }
     }
 
-    func resetAllTracking() {
-        firedThresholds = [:]
-    }
-
     // MARK: - Private
 
     private func checkBucket(
