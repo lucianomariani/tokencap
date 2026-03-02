@@ -56,7 +56,8 @@ final class UsageService: ObservableObject {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("tokencap/1.2.1", forHTTPHeaderField: "User-Agent")
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+            request.setValue("tokencap/\(version)", forHTTPHeaderField: "User-Agent")
             request.timeoutInterval = 15
 
             let (data, response) = try await URLSession.shared.data(for: request)

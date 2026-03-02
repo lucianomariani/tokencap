@@ -29,6 +29,7 @@ enum MenuTab: String, CaseIterable {
 struct MenuBarView: View {
     @ObservedObject var service: UsageService
     @ObservedObject var settings: SettingsManager
+    @ObservedObject var updateService: UpdateService
     @State private var selectedTab: MenuTab = .usage
 
     var body: some View {
@@ -307,9 +308,15 @@ struct MenuBarView: View {
                     Text("TokenCap")
                         .font(.system(size: 15, weight: .bold))
 
-                    Text("Version 1.2.1")
+                    Text("Version \(updateService.currentVersion)")
                         .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
+
+                    if updateService.updateAvailable {
+                        updateBanner
+                    }
+
+                    checkForUpdatesButton
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
@@ -422,6 +429,63 @@ struct MenuBarView: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(tintColor.opacity(0.2), lineWidth: 1)
         )
+    }
+
+    // MARK: - Update Banner
+
+    private var updateBanner: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.orange)
+
+                Text("Version \(updateService.latestVersion) available")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.orange)
+            }
+
+            Button {
+                updateService.openDownload()
+            } label: {
+                Text("Download Update")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+            }
+            .buttonStyle(.plain)
+            .background(Color.orange, in: RoundedRectangle(cornerRadius: 6))
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private var checkForUpdatesButton: some View {
+        Button {
+            AnalyticsService.shared.track("manual_update_check")
+            Task { await updateService.checkForUpdates() }
+        } label: {
+            HStack(spacing: 6) {
+                if updateService.isChecking {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11))
+                }
+                Text("Check for Updates")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .disabled(updateService.isChecking)
     }
 
     // MARK: - Error Card

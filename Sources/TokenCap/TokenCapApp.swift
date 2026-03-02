@@ -5,6 +5,7 @@ struct TokenCapApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var settings = SettingsManager.shared
     @StateObject private var usageService: UsageService
+    @StateObject private var updateService = UpdateService.shared
 
     init() {
         let settings = SettingsManager.shared
@@ -15,7 +16,7 @@ struct TokenCapApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView(service: usageService, settings: settings)
+            MenuBarView(service: usageService, settings: settings, updateService: updateService)
         } label: {
             menuBarLabel
         }
@@ -33,6 +34,7 @@ struct TokenCapApp: App {
         .onAppear {
             notifications.requestPermission()
             usageService.startPolling(interval: settings.pollInterval)
+            Task { await updateService.checkIfNeeded() }
             AnalyticsService.shared.track("app_launched", data: [
                 "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
             ])
