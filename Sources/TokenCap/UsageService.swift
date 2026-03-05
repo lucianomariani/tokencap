@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Security
 
 @MainActor
 final class UsageService: ObservableObject {
@@ -20,6 +21,18 @@ final class UsageService: ObservableObject {
     // MARK: - Token Management
 
     func readAccessToken() throws -> String {
+        // Try macOS Keychain first (Claude Code 1.0.33+)
+        let keychainResult = readTokenFromKeychain()
+        switch keychainResult {
+        case .success(let token):
+            return token
+        case .failure(let error):
+            throw error
+        case .none:
+            break
+        }
+
+        // Fall back to file-based credentials (~/.claude/.credentials.json)
         let credentialsPath = settings.credentialsPath
         let url = URL(fileURLWithPath: credentialsPath)
         let claudeDir = (credentialsPath as NSString).deletingLastPathComponent
@@ -40,6 +53,35 @@ final class UsageService: ObservableObject {
         } catch is DecodingError {
             throw UsageError.unsupportedFormat
         }
+    }
+
+    /// Reads OAuth token from macOS Keychain.
+    /// Returns `.success` with token, `.failure` if entry exists but is invalid, or `nil` if no entry found.
+    private func readTokenFromKeychain() -> Result<String, UsageError>? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Code-credentials",
+            kSecAttrAccount as String: NSUserName(),
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess, let data = result as? Data else {
+            return nil
+        }
+
+        guard let credentials = try? JSONDecoder().decode(CredentialsFile.self, from: data) else {
+            return .failure(.unsupportedFormat)
+        }
+
+        if credentials.claudeAiOauth.isExpired {
+            return .failure(.tokenExpired(credentials.claudeAiOauth.expirationDate))
+        }
+
+        return .success(credentials.claudeAiOauth.accessToken)
     }
 
     // MARK: - API Fetching
