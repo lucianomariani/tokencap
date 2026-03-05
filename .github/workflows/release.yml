@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.4.0)'
+        required: true
 
 permissions:
   contents: write
@@ -20,9 +25,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Extract version from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "VERSION=${TAG#v}" >> $GITHUB_ENV
 
       - name: Build universal binary
         run: swift build -c release --arch arm64 --arch x86_64
@@ -113,7 +123,7 @@ jobs:
             --hide-extension "${{ env.APP_NAME }}.app" \
             --app-drop-link 425 190 \
             --no-internet-enable \
-            "release/${{ env.APP_NAME }}-${{ github.ref_name }}.dmg" \
+            "release/${{ env.APP_NAME }}-${{ env.TAG }}.dmg" \
             "release/${{ env.APP_NAME }}.app"
 
       - name: Notarize DMG
@@ -122,18 +132,18 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          xcrun notarytool submit "release/${{ env.APP_NAME }}-${{ github.ref_name }}.dmg" \
+          xcrun notarytool submit "release/${{ env.APP_NAME }}-${{ env.TAG }}.dmg" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-          xcrun stapler staple "release/${{ env.APP_NAME }}-${{ github.ref_name }}.dmg"
+          xcrun stapler staple "release/${{ env.APP_NAME }}-${{ env.TAG }}.dmg"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/${{ env.APP_NAME }}-${{ github.ref_name }}.dmg
+          files: release/${{ env.APP_NAME }}-${{ env.TAG }}.dmg
           generate_release_notes: true
           draft: false
 
@@ -141,7 +151,7 @@ jobs:
         env:
           TAP_TOKEN: ${{ secrets.SITE_UPDATE_PAT }}
         run: |
-          SHA256=$(shasum -a 256 "release/${{ env.APP_NAME }}-${{ github.ref_name }}.dmg" | awk '{print $1}')
+          SHA256=$(shasum -a 256 "release/${{ env.APP_NAME }}-${{ env.TAG }}.dmg" | awk '{print $1}')
 
           # Get current file from homebrew-tap repo
           CONTENT=$(curl -s -H "Authorization: token $TAP_TOKEN" \
@@ -187,4 +197,4 @@ jobs:
             -H "Authorization: token $TAP_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/helsky-labs/tokencap/actions/workflows/update-site.yml/dispatches" \
-            -d "{\"ref\":\"main\",\"inputs\":{\"tag\":\"${{ github.ref_name }}\"}}"
+            -d "{\"ref\":\"main\",\"inputs\":{\"tag\":\"${{ env.TAG }}\"}}"
