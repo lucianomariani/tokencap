@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import ServiceManagement
 
 @MainActor
@@ -92,6 +93,18 @@ final class SettingsManager: ObservableObject {
         }
 
         return nil
+    }
+
+    /// Whether credentials exist in the macOS Keychain (Claude Code 1.0.33+).
+    var hasKeychainCredentials: Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Code-credentials",
+            kSecAttrAccount as String: NSUserName(),
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
 
     private func resolvingSymlinks(_ path: String) -> String {

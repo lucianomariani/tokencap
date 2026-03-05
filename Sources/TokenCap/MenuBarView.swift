@@ -256,7 +256,7 @@ struct MenuBarView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     settingRow {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Config directory")
+                            Text("Credentials")
                                 .font(.system(size: 13))
                             Text(configDirLabel)
                                 .font(.system(size: 11))
@@ -265,29 +265,31 @@ struct MenuBarView: View {
                                 .truncationMode(.middle)
                         }
                     } control: {
-                        HStack(spacing: 4) {
-                            if settings.customConfigDir != nil {
+                        if !settings.hasKeychainCredentials {
+                            HStack(spacing: 4) {
+                                if settings.customConfigDir != nil {
+                                    Button {
+                                        settings.customConfigDir = nil
+                                        Task { await service.fetchUsage() }
+                                    } label: {
+                                        Image(systemName: "arrow.uturn.backward")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+
                                 Button {
-                                    settings.customConfigDir = nil
-                                    Task { await service.fetchUsage() }
+                                    browseForConfigDir()
                                 } label: {
-                                    Image(systemName: "arrow.uturn.backward")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.secondary)
+                                    Text("Browse")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
                                 }
                                 .buttonStyle(.plain)
+                                .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
                             }
-
-                            Button {
-                                browseForConfigDir()
-                            } label: {
-                                Text("Browse")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                            }
-                            .buttonStyle(.plain)
-                            .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
                         }
                     }
                 }
@@ -674,6 +676,9 @@ struct MenuBarView: View {
     }
 
     private var configDirLabel: String {
+        if settings.hasKeychainCredentials {
+            return "macOS Keychain"
+        }
         if let custom = settings.customConfigDir, !custom.isEmpty {
             return custom
         }

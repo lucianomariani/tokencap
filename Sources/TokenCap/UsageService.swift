@@ -22,14 +22,13 @@ final class UsageService: ObservableObject {
 
     func readAccessToken() throws -> String {
         // Try macOS Keychain first (Claude Code 1.0.33+)
-        let keychainResult = readTokenFromKeychain()
-        switch keychainResult {
-        case .success(let token):
-            return token
-        case .failure(let error):
-            throw error
-        case .none:
-            break
+        if let keychainResult = readTokenFromKeychain() {
+            switch keychainResult {
+            case .success(let token):
+                return token
+            case .failure(let error):
+                throw error
+            }
         }
 
         // Fall back to file-based credentials (~/.claude/.credentials.json)
@@ -55,8 +54,8 @@ final class UsageService: ObservableObject {
         }
     }
 
-    /// Reads OAuth token from macOS Keychain.
-    /// Returns `.success` with token, `.failure` if entry exists but is invalid, or `nil` if no entry found.
+    /// Reads OAuth token from macOS Keychain (Claude Code 1.0.33+).
+    /// Returns `.success` if token found and valid, `.failure` if found but invalid/expired, `nil` if no entry.
     private func readTokenFromKeychain() -> Result<String, UsageError>? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
