@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import Security
 
 @MainActor
 final class UsageService: ObservableObject {
@@ -13,6 +12,7 @@ final class UsageService: ObservableObject {
     private let apiURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private var pollTimer: Timer?
     private var lastTrackedLevel: UsageLevel?
+    private var cachedToken: (token: String, expiresAt: Date)?
 
     init(settings: SettingsManager) {
         self.settings = settings
@@ -21,7 +21,35 @@ final class UsageService: ObservableObject {
     // MARK: - Token Management
 
     func readAccessToken() throws -> String {
-        // Try macOS Keychain first (Claude Code 1.0.33+)
+        // Return cached token if still valid (avoids Keychain prompts on every poll).
+        if let cached = cachedToken, Date() < cached.expiresAt {
+            return cached.token
+        }
+        cachedToken = nil
+
+        // Try file-based credentials first (~/.claude/.credentials.json)
+        // This avoids macOS Keychain access prompts entirely when the file exists.
+        let credentialsPath = settings.credentialsPath
+        let url = URL(fileURLWithPath: credentialsPath)
+
+        if FileManager.default.fileExists(atPath: credentialsPath) {
+            let data = try Data(contentsOf: url)
+            do {
+                let credentials = try JSONDecoder().decode(CredentialsFile.self, from: data)
+                if credentials.claudeAiOauth.isExpired {
+                    throw UsageError.tokenExpired(credentials.claudeAiOauth.expirationDate)
+                }
+                cachedToken = (credentials.claudeAiOauth.accessToken, credentials.claudeAiOauth.expirationDate)
+                return credentials.claudeAiOauth.accessToken
+            } catch is DecodingError {
+                throw UsageError.unsupportedFormat
+            }
+        }
+
+        // Fall back to macOS Keychain (Claude Code 1.0.33+).
+        // Uses `security` CLI instead of Security framework to avoid repeated
+        // Keychain prompts — /usr/bin/security has a stable Apple code signature,
+        // so "Always Allow" persists reliably.
         if let keychainResult = readTokenFromKeychain() {
             switch keychainResult {
             case .success(let token):
@@ -31,48 +59,49 @@ final class UsageService: ObservableObject {
             }
         }
 
-        // Fall back to file-based credentials (~/.claude/.credentials.json)
-        let credentialsPath = settings.credentialsPath
-        let url = URL(fileURLWithPath: credentialsPath)
         let claudeDir = (credentialsPath as NSString).deletingLastPathComponent
         let dirExists = FileManager.default.fileExists(atPath: claudeDir)
-
-        guard FileManager.default.fileExists(atPath: credentialsPath) else {
-            throw dirExists ? UsageError.oauthLoginRequired : UsageError.claudeCodeNotInstalled
-        }
-
-        let data = try Data(contentsOf: url)
-
-        do {
-            let credentials = try JSONDecoder().decode(CredentialsFile.self, from: data)
-            if credentials.claudeAiOauth.isExpired {
-                throw UsageError.tokenExpired(credentials.claudeAiOauth.expirationDate)
-            }
-            return credentials.claudeAiOauth.accessToken
-        } catch is DecodingError {
-            throw UsageError.unsupportedFormat
-        }
+        throw dirExists ? UsageError.oauthLoginRequired : UsageError.claudeCodeNotInstalled
     }
 
-    /// Reads OAuth token from macOS Keychain (Claude Code 1.0.33+).
+    /// Reads OAuth token from macOS Keychain via `security` CLI (Claude Code 1.0.33+).
+    /// Uses the CLI instead of Security framework to avoid repeated Keychain access prompts.
     /// Returns `.success` if token found and valid, `.failure` if found but invalid/expired, `nil` if no entry.
     private func readTokenFromKeychain() -> Result<String, UsageError>? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecAttrAccount as String: NSUserName(),
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = [
+            "find-generic-password",
+            "-s", "Claude Code-credentials",
+            "-a", NSUserName(),
+            "-w",
         ]
 
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
 
-        guard status == errSecSuccess, let data = result as? Data else {
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
             return nil
         }
 
-        guard let credentials = try? JSONDecoder().decode(CredentialsFile.self, from: data) else {
+        guard process.terminationStatus == 0 else {
+            return nil
+        }
+
+        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+        guard let raw = String(data: outputData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              let jsonData = raw.data(using: .utf8) else {
+            return nil
+        }
+
+        guard let credentials = try? JSONDecoder().decode(CredentialsFile.self, from: jsonData) else {
             return .failure(.unsupportedFormat)
         }
 
@@ -80,6 +109,7 @@ final class UsageService: ObservableObject {
             return .failure(.tokenExpired(credentials.claudeAiOauth.expirationDate))
         }
 
+        cachedToken = (credentials.claudeAiOauth.accessToken, credentials.claudeAiOauth.expirationDate)
         return .success(credentials.claudeAiOauth.accessToken)
     }
 
@@ -108,6 +138,9 @@ final class UsageService: ObservableObject {
             }
 
             guard httpResponse.statusCode == 200 else {
+                if httpResponse.statusCode == 401 {
+                    cachedToken = nil
+                }
                 let body = String(data: data, encoding: .utf8) ?? "No body"
                 throw UsageError.httpError(httpResponse.statusCode, body)
             }
