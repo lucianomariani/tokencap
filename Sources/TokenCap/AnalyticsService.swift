@@ -9,6 +9,7 @@ final class AnalyticsService {
 
     private let websiteID = "a9b94dba-2442-4c1a-be15-e717a11f9321"
     private let endpoint = URL(string: "https://analytics.helsky-labs.com/api/send")!
+    private let origin = "https://tokencap.app"
     private let sessionID = UUID().uuidString
     private let appVersion: String
 
@@ -24,7 +25,7 @@ final class AnalyticsService {
         let payload = EventPayload(
             website: websiteID,
             hostname: "tokencap.app",
-            url: "app://tokencap/\(event)",
+            url: "/app/\(event)",
             title: "TokenCap",
             language: Locale.current.language.languageCode?.identifier ?? "en",
             screen: screenResolution,
@@ -34,13 +35,14 @@ final class AnalyticsService {
 
         let body = SendBody(type: "event", payload: payload)
 
-        Task.detached(priority: .utility) { [endpoint, sessionID, appVersion] in
+        Task.detached(priority: .utility) { [endpoint, origin, appVersion] in
             do {
                 var request = URLRequest(url: endpoint)
                 request.httpMethod = "POST"
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.setValue("TokenCap/\(appVersion)", forHTTPHeaderField: "User-Agent")
-                request.setValue(sessionID, forHTTPHeaderField: "X-Umami-Session")
+                request.setValue(origin, forHTTPHeaderField: "Origin")
+                request.setValue("\(origin)/", forHTTPHeaderField: "Referer")
                 request.timeoutInterval = 10
                 request.httpBody = try JSONEncoder().encode(body)
 

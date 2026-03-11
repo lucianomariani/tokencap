@@ -13,6 +13,8 @@ final class UsageService: ObservableObject {
     private var pollTimer: Timer?
     private var lastTrackedLevel: UsageLevel?
     private var cachedToken: (token: String, expiresAt: Date)?
+    private var retryAfter: Date?
+    private var consecutiveRateLimits: Int = 0
 
     init(settings: SettingsManager) {
         self.settings = settings
@@ -116,6 +118,11 @@ final class UsageService: ObservableObject {
     // MARK: - API Fetching
 
     func fetchUsage() async {
+        // Skip if still in backoff period from a previous 429
+        if let retryAfter, Date() < retryAfter {
+            return
+        }
+
         isLoading = true
         defer { isLoading = false }
 
@@ -141,9 +148,16 @@ final class UsageService: ObservableObject {
                 if httpResponse.statusCode == 401 {
                     cachedToken = nil
                 }
+                if httpResponse.statusCode == 429 {
+                    applyRateLimitBackoff(from: httpResponse)
+                    throw UsageError.rateLimited(retryAfter)
+                }
                 let body = String(data: data, encoding: .utf8) ?? "No body"
                 throw UsageError.httpError(httpResponse.statusCode, body)
             }
+
+            consecutiveRateLimits = 0
+            retryAfter = nil
 
             let usageResponse = try JSONDecoder().decode(UsageResponse.self, from: data)
             self.usage = usageResponse
@@ -167,6 +181,21 @@ final class UsageService: ObservableObject {
         } catch {
             self.error = .unexpected(error.localizedDescription)
             AnalyticsService.shared.track("usage_error", data: ["type": "unexpected"])
+        }
+    }
+
+    /// Applies exponential backoff on 429 responses.
+    /// Uses the `Retry-After` header if present, otherwise backs off progressively.
+    private func applyRateLimitBackoff(from response: HTTPURLResponse) {
+        consecutiveRateLimits += 1
+
+        if let retryHeader = response.value(forHTTPHeaderField: "Retry-After"),
+           let seconds = Double(retryHeader) {
+            retryAfter = Date().addingTimeInterval(seconds)
+        } else {
+            // Exponential backoff: 2min, 4min, 8min, capped at 10min
+            let backoff = min(120 * pow(2.0, Double(consecutiveRateLimits - 1)), 600)
+            retryAfter = Date().addingTimeInterval(backoff)
         }
     }
 
@@ -220,6 +249,7 @@ enum UsageError: LocalizedError {
     case unsupportedFormat
     case tokenExpired(Date)
     case invalidResponse
+    case rateLimited(Date?)
     case httpError(Int, String)
     case unexpected(String)
 
@@ -238,6 +268,7 @@ enum UsageError: LocalizedError {
         case .oauthLoginRequired: return "person.badge.key.fill"
         case .unsupportedFormat: return "doc.questionmark.fill"
         case .tokenExpired: return "clock.arrow.circlepath"
+        case .rateLimited: return "hourglass"
         default: return "exclamationmark.triangle.fill"
         }
     }
@@ -249,6 +280,7 @@ enum UsageError: LocalizedError {
         case .unsupportedFormat: return "unsupported_format"
         case .tokenExpired: return "token_expired"
         case .invalidResponse: return "invalid_response"
+        case .rateLimited: return "rate_limited"
         case .httpError(let code, _): return "http_\(code)"
         case .unexpected: return "unexpected"
         }
@@ -266,6 +298,13 @@ enum UsageError: LocalizedError {
             return "Session expired"
         case .invalidResponse:
             return "Invalid response from API"
+        case .rateLimited(let retryDate):
+            if let retryDate {
+                let seconds = Int(retryDate.timeIntervalSinceNow)
+                let minutes = max(1, (seconds + 30) / 60)
+                return "Rate limited — retrying in ~\(minutes)min"
+            }
+            return "Rate limited — backing off"
         case .httpError(let code, _):
             return "API error (HTTP \(code))"
         case .unexpected(let msg):
@@ -285,6 +324,8 @@ enum UsageError: LocalizedError {
             return "Open Claude Code to refresh your session."
         case .httpError(401, _):
             return "Open Claude Code to refresh your session."
+        case .rateLimited:
+            return "Polling will resume automatically."
         default:
             return nil
         }

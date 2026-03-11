@@ -493,15 +493,18 @@ struct MenuBarView: View {
     // MARK: - Error Card
 
     private func errorCard(_ error: UsageError) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isWarning = if case .rateLimited = error { true } else { false }
+        let tintColor = isWarning ? Color.statusYellow : Color.statusRed
+
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: error.iconName)
                     .font(.system(size: 14))
-                    .foregroundStyle(Color.statusRed)
+                    .foregroundStyle(tintColor)
 
                 Text(error.localizedDescription)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.statusRed)
+                    .foregroundStyle(tintColor)
             }
 
             if let suggestion = error.recoverySuggestion {
@@ -525,10 +528,10 @@ struct MenuBarView: View {
             }
         }
         .padding(14)
-        .background(Color.statusRed.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+        .background(tintColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.statusRed.opacity(0.2), lineWidth: 1)
+                .stroke(tintColor.opacity(0.2), lineWidth: 1)
         )
     }
 
