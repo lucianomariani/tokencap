@@ -40,6 +40,32 @@ final class NotificationService: ObservableObject {
         }
     }
 
+    // MARK: - Update Notification
+
+    private let lastNotifiedVersionKey = "lastNotifiedUpdateVersion"
+
+    func notifyUpdateAvailable(version: String) {
+        guard isAvailable else { return }
+
+        let lastNotified = UserDefaults.standard.string(forKey: lastNotifiedVersionKey)
+        guard lastNotified != version else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "TokenCap \(version) Available"
+        content.body = "A new version is ready to download."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "tokencap-update-\(version)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+        UserDefaults.standard.set(version, forKey: lastNotifiedVersionKey)
+
+        AnalyticsService.shared.track("update_notification_sent", data: ["version": version])
+    }
+
     // MARK: - Private
 
     private func checkBucket(

@@ -47,6 +47,11 @@ struct TokenCapApp: App {
                 notifications.checkThresholds(usage: usage, settings: settings)
             }
         }
+        .onChange(of: updateService.updateAvailable) { _, available in
+            if available {
+                notifications.notifyUpdateAvailable(version: updateService.latestVersion)
+            }
+        }
     }
 
     // MARK: - Menu Bar Icon
