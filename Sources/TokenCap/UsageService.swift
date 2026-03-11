@@ -117,10 +117,20 @@ final class UsageService: ObservableObject {
 
     // MARK: - API Fetching
 
-    func fetchUsage() async {
+    func fetchUsage(force: Bool = false) async {
         // Skip if still in backoff period from a previous 429
-        if let retryAfter, Date() < retryAfter {
+        // force: true bypasses this (used for manual refresh)
+        if !force, let retryAfter, Date() < retryAfter {
             return
+        }
+
+        // If enough time has passed since the last 429, reset the consecutive
+        // counter so we don't jump straight to max backoff after a long wait.
+        if let retryAfter, Date() >= retryAfter {
+            let elapsed = Date().timeIntervalSince(retryAfter)
+            if elapsed > 120 {
+                consecutiveRateLimits = 0
+            }
         }
 
         isLoading = true

@@ -598,7 +598,7 @@ struct MenuBarView: View {
 
             HStack(spacing: 2) {
                 Button {
-                    Task { await service.fetchUsage() }
+                    Task { await service.fetchUsage(force: true) }
                     AnalyticsService.shared.track("manual_refresh")
                 } label: {
                     Image(systemName: "arrow.clockwise")
