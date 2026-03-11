@@ -200,7 +200,8 @@ struct MenuBarView: View {
                         Picker("", selection: $settings.pollInterval) {
                             Text("30s").tag(30.0)
                             Text("60s").tag(60.0)
-                            Text("120s").tag(120.0)
+                            Text("2min").tag(120.0)
+                            Text("5min").tag(300.0)
                         }
                         .pickerStyle(.menu)
                         .frame(width: 70)
