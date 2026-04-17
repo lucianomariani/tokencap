@@ -38,14 +38,17 @@ struct MenuBarView: View {
             tabBar
 
             ScrollView {
-                switch selectedTab {
-                case .usage:
-                    usageTab
-                case .settings:
-                    settingsTab
+                Group {
+                    switch selectedTab {
+                    case .usage:
+                        usageTab
+                    case .settings:
+                        settingsTab
+                    }
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxHeight: 600)
+            .frame(minHeight: 260, maxHeight: 600)
 
             Divider()
             footerSection
