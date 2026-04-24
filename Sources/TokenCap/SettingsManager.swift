@@ -41,8 +41,8 @@ final class SettingsManager: ObservableObject {
             "launchAtLogin": false,
             "pollInterval": 60.0,
             "notificationsEnabled": true,
-            "enabledThresholds": [50, 75, 80, 90],
-            "analyticsEnabled": true,
+            "enabledThresholds": [10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 85, 90],
+            "analyticsEnabled": false,
         ])
 
         self.launchAtLogin = defaults.bool(forKey: "launchAtLogin")

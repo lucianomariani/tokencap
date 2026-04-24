@@ -30,6 +30,7 @@ struct MenuBarView: View {
     @ObservedObject var service: UsageService
     @ObservedObject var settings: SettingsManager
     @ObservedObject var updateService: UpdateService
+    @ObservedObject var notifications: NotificationService
     @State private var selectedTab: MenuTab = .usage
 
     var body: some View {
@@ -250,6 +251,7 @@ struct MenuBarView: View {
 
                 if settings.notificationsEnabled {
                     thresholdGrid
+                    testAlertsSection
                 }
             }
 
@@ -539,6 +541,42 @@ struct MenuBarView: View {
         )
     }
 
+    // MARK: - Test Alerts
+
+    private var testAlertsSection: some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 4)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Test alert sounds")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 4)
+
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(notifications.testableThresholds, id: \.self) { threshold in
+                    Button {
+                        notifications.playTestSound(for: threshold)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 8))
+                            Text("\(threshold)%")
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.primary.opacity(0.05))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     // MARK: - Threshold Grid
 
     private var thresholdGrid: some View {
@@ -585,20 +623,6 @@ struct MenuBarView: View {
 
             Spacer(minLength: 4)
 
-            Button {
-                NSWorkspace.shared.open(URL(string: "https://helsky-labs.com/")!)
-            } label: {
-                HStack(spacing: 4) {
-                    hyMark(size: 14)
-                    Text("by Helsky Labs")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-            }
-            .buttonStyle(.plain)
-
             HStack(spacing: 2) {
                 Button {
                     Task { await service.fetchUsage(force: true) }
@@ -629,23 +653,6 @@ struct MenuBarView: View {
     // MARK: - Helpers
 
     @Environment(\.colorScheme) private var colorScheme
-
-    private func hyMark(size: CGFloat) -> some View {
-        Group {
-            let variant = colorScheme == .dark ? "hy-mark-white-56" : "hy-mark-dark-56"
-            if let url = Bundle.module.url(forResource: variant, withExtension: "png"),
-               let nsImage = NSImage(contentsOf: url) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: size, height: size)
-            } else {
-                Text("HY")
-                    .font(.system(size: size * 0.4, weight: .bold))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
 
     private func brandIcon(size: CGFloat) -> some View {
         Group {

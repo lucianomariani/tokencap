@@ -16,7 +16,7 @@ struct TokenCapApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView(service: usageService, settings: settings, updateService: updateService)
+            MenuBarView(service: usageService, settings: settings, updateService: updateService, notifications: notifications)
         } label: {
             menuBarLabel
         }

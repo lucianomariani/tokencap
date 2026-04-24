@@ -7,9 +7,9 @@
     <key>CFBundleIdentifier</key>
     <string>com.helsky-labs.tokencap</string>
     <key>CFBundleVersion</key>
-    <string>1.7.1</string>
+    <string>1.8.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.7.1</string>
+    <string>1.8.0</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSUIElement</key>
@@ -20,6 +20,6 @@
         <false/>
     </dict>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright 2026 Helsky Labs. All rights reserved.</string>
+    <string>Copyright 2026 Luciano Mariani. Forked from Helsky Labs.</string>
 </dict>
 </plist>
