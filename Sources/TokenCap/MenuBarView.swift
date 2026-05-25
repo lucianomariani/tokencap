@@ -32,6 +32,7 @@ struct MenuBarView: View {
     @ObservedObject var updateService: UpdateService
     @ObservedObject var notifications: NotificationService
     @State private var selectedTab: MenuTab = .usage
+    @State private var sendTestStatus: SendTestStatus = .idle
 
     var body: some View {
         VStack(spacing: 0) {
@@ -254,6 +255,9 @@ struct MenuBarView: View {
                     testAlertsSection
                 }
             }
+
+            // Devices (M1 only — temporary debug. Replaced by real DEVICES UI in M2.)
+            devicesSection
 
             // Claude Code
             VStack(alignment: .leading, spacing: 8) {
@@ -729,6 +733,81 @@ struct MenuBarView: View {
         if let appleScript = NSAppleScript(source: script) {
             var error: NSDictionary?
             appleScript.executeAndReturnError(&error)
+        }
+    }
+
+    // MARK: - Devices (M1 throwaway)
+    // Replaced in M2 by DevicePusher + UserDefaults-driven hostnames.
+
+    enum SendTestStatus: Equatable {
+        case idle, sending, sent
+        case failed(String)
+    }
+
+    @ViewBuilder
+    private var devicesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("DEVICES")
+
+            settingRow {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Send test message")
+                        .font(.system(size: 13))
+                    Text("POSTs to http://192.168.1.11/update")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+            } control: {
+                Button {
+                    Task { await sendTestMessage() }
+                } label: {
+                    Text(sendTestStatus == .sending ? "…" : "Send")
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                }
+                .buttonStyle(.plain)
+                .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                .disabled(sendTestStatus == .sending)
+            }
+
+            switch sendTestStatus {
+            case .idle, .sending:
+                EmptyView()
+            case .sent:
+                Text("Sent")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.statusGreen)
+            case .failed(let msg):
+                Text("Failed: \(msg)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.statusRed)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private func sendTestMessage() async {
+        sendTestStatus = .sending
+
+        var request = URLRequest(url: URL(string: "http://192.168.1.11/update")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(#"{"msg":"hello from tokencap"}"#.utf8)
+        request.timeoutInterval = 2
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                sendTestStatus = .failed("HTTP \(code)")
+                return
+            }
+            sendTestStatus = .sent
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if sendTestStatus == .sent { sendTestStatus = .idle }
+        } catch {
+            sendTestStatus = .failed(error.localizedDescription)
         }
     }
 }
