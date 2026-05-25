@@ -34,10 +34,37 @@ Download the latest `.dmg` from [GitHub Releases](https://github.com/lucianomari
 
 TokenCap reads your Claude Code OAuth token from `~/.claude/.credentials.json` and polls Anthropic's usage API every 60 seconds. No account creation, no cloud sync, no telemetry.
 
+## Optional: hardware dashboard
+
+You can mirror the numbers onto a [LilyGo T-Display-S3](https://www.lilygo.cc/products/t-display-s3) ESP32 board on your LAN — an always-visible desk display. TokenCap stays in charge of OAuth and polling; after each successful poll it POSTs a small JSON payload to the board over HTTP. The board has no Anthropic credentials and never talks to the cloud.
+
+Firmware and flashing live in the companion repo: **[lucianomariani/tokencap-t-display-s3](https://github.com/lucianomariani/tokencap-t-display-s3)**.
+
+### Setup
+
+1. **Flash the firmware** to the board (PlatformIO — see the firmware repo's README).
+2. **Connect the board to WiFi.** On first boot the board comes up as a WiFi access point named `tokencap-setup`. Join it from your phone, pick your home SSID, enter the password, save. The board reboots onto your network and advertises itself over mDNS as `tokencap.local`.
+3. **Point TokenCap at the board.** Open the menu bar → **Settings → DEVICES**, type `tokencap.local` in the Hostname field, and press **Enter**. The board updates within a couple of seconds. The reachability dot turns green when the board responds; click **Test connection** to verify on demand.
+
+If `tokencap.local` doesn't resolve from your Mac (mDNS is occasionally flaky), use the board's local IP address instead. You can find it in your router's DHCP client list or by watching the board's serial output (`pio device monitor` from the firmware repo) right after WiFi connects. Reserve a static DHCP lease for the board if you want the IP to stick.
+
+### Rename a board (advanced)
+
+For desks with more than one board — or just preferred naming — set the hostname via `POST /config`:
+
+```bash
+curl -X POST http://tokencap.local/config \
+  -H 'Content-Type: application/json' \
+  -d '{"hostname":"tokencap-desk"}'
+```
+
+The board reboots and comes back as `tokencap-desk.local`. (UI for managing multiple boards from the menu bar lands in a follow-up release.)
+
 ## Privacy
 
 - Reads only your local credential file
 - Makes HTTPS requests to `api.anthropic.com` (and to your Umami instance, if you configured one — see below)
+- If a hardware device is configured, sends the usage payload over plain HTTP to that device on your LAN — no auth, LAN-only by design
 - Stores nothing to disk
 - Fully open source — read every line
 
@@ -96,6 +123,7 @@ This fork diverges from [helsky-labs/tokencap](https://github.com/helsky-labs/to
 - **Test-alert UI** — Settings → Notifications now has a grid of buttons to preview the sound for each threshold.
 - **Extended default thresholds** — all supported thresholds enabled by default, not just 50/75/80/90.
 - **Upstream branding removed** — the Helsky Labs mark and footer link have been removed from the menu UI.
+- **Optional hardware dashboard** — push usage data to a LilyGo T-Display-S3 ESP32 board on your LAN. See [Optional: hardware dashboard](#optional-hardware-dashboard).
 
 ## License
 
