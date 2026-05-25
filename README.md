@@ -48,9 +48,11 @@ Firmware and flashing live in the companion repo: **[lucianomariani/tokencap-t-d
 
 If `tokencap.local` doesn't resolve from your Mac (mDNS is occasionally flaky), use the board's local IP address instead. You can find it in your router's DHCP client list or by watching the board's serial output (`pio device monitor` from the firmware repo) right after WiFi connects. Reserve a static DHCP lease for the board if you want the IP to stick.
 
-### Rename a board (advanced)
+### Configure a board (advanced)
 
-For desks with more than one board — or just preferred naming — set the hostname via `POST /config`:
+`POST /config` accepts either or both of `hostname` and `tz` and reboots the board.
+
+**Rename a board** — useful when running more than one on the same LAN, or just for preferred naming:
 
 ```bash
 curl -X POST http://tokencap.local/config \
@@ -58,7 +60,28 @@ curl -X POST http://tokencap.local/config \
   -d '{"hostname":"tokencap-desk"}'
 ```
 
-The board reboots and comes back as `tokencap-desk.local`. (UI for managing multiple boards from the menu bar lands in a follow-up release.)
+The board reboots and comes back as `tokencap-desk.local`.
+
+**Set the timezone** — a fresh board defaults to UTC, so reset labels (`resets in 3h 45m`) render against UTC time. Send a POSIX TZ string to switch to local time:
+
+```bash
+# Europe/Rome
+curl -X POST http://tokencap.local/config \
+  -H 'Content-Type: application/json' \
+  -d '{"tz":"CET-1CEST,M3.5.0,M10.5.0/3"}'
+
+# America/New_York
+# -d '{"tz":"EST5EDT,M3.2.0,M11.1.0"}'
+
+# America/Los_Angeles
+# -d '{"tz":"PST8PDT,M3.2.0,M11.1.0"}'
+```
+
+The board uses NTP for absolute time and applies your TZ when rendering. See the [firmware README's Timezone section](https://github.com/lucianomariani/tokencap-t-display-s3#timezone) for more POSIX TZ examples.
+
+### Multiple boards
+
+Add as many devices as you have boards via **Settings → DEVICES → + Add device**. Each row gets its own reachability dot. The Mac pushes to all configured boards in parallel after every poll; a board that's powered off (red dot) doesn't delay updates to the live ones.
 
 ## Privacy
 
