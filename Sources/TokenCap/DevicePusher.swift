@@ -6,8 +6,14 @@ import os
 // Bump `v` on any breaking change to the JSON shape.
 
 @MainActor
-final class DevicePusher {
+final class DevicePusher: ObservableObject {
     static let shared = DevicePusher()
+
+    enum ReachabilityState: Equatable {
+        case unknown, checking, reachable, unreachable
+    }
+
+    @Published private(set) var reachability: [String: ReachabilityState] = [:]
 
     private let session: URLSession
     private let logger = Logger(subsystem: "com.helsky-labs.tokencap", category: "DevicePusher")
@@ -27,8 +33,11 @@ final class DevicePusher {
     }
 
     func push(usage: UsageResponse, to hostnames: [String]) async {
-        let urls = hostnames.compactMap(Self.updateURL(for:))
-        guard !urls.isEmpty else { return }
+        let targets: [(host: String, url: URL)] = hostnames.compactMap { host in
+            guard let url = Self.updateURL(for: host) else { return nil }
+            return (host, url)
+        }
+        guard !targets.isEmpty else { return }
 
         let payload = Self.payload(from: usage)
         guard let body = try? encoder.encode(payload) else {
@@ -37,13 +46,33 @@ final class DevicePusher {
         }
 
         await withTaskGroup(of: Void.self) { group in
-            for url in urls {
-                group.addTask { [self] in await pushOne(url: url, body: body) }
+            for target in targets {
+                group.addTask { [self] in
+                    await pushOne(host: target.host, url: target.url, body: body)
+                }
             }
         }
     }
 
-    private func pushOne(url: URL, body: Data) async {
+    func testConnection(hostname: String) async {
+        let trimmed = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = Self.statusURL(for: trimmed) else { return }
+        reachability[trimmed] = .checking
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            reachability[trimmed] = (200...299).contains(code) ? .reachable : .unreachable
+        } catch {
+            logger.warning("test \(url.host ?? "?") failed: \(error.localizedDescription)")
+            reachability[trimmed] = .unreachable
+        }
+    }
+
+    private func pushOne(host: String, url: URL, body: Data) async {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -54,24 +83,35 @@ final class DevicePusher {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             if (200...299).contains(code) {
                 logger.debug("push \(url.host ?? "?") OK \(code)")
+                reachability[host] = .reachable
             } else {
                 logger.warning("push \(url.host ?? "?") HTTP \(code)")
+                reachability[host] = .unreachable
             }
         } catch {
             logger.warning("push \(url.host ?? "?") failed: \(error.localizedDescription)")
+            reachability[host] = .unreachable
         }
     }
 
-    // Accepts "tokencap.local", "192.168.1.11", "http://host:8080".
-    // Appends /update.
+    // Accepts "tokencap.local", "192.168.1.11", "http://host:8080". Appends /update.
     static func updateURL(for hostname: String) -> URL? {
+        baseURL(for: hostname)?.appendingPathComponent("update")
+    }
+
+    static func statusURL(for hostname: String) -> URL? {
+        baseURL(for: hostname)
+    }
+
+    private static func baseURL(for hostname: String) -> URL? {
         let trimmed = hostname.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let withScheme = trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://")
+        let lower = trimmed.lowercased()
+        let withScheme = (lower.hasPrefix("http://") || lower.hasPrefix("https://"))
             ? trimmed
             : "http://\(trimmed)"
         guard let base = URL(string: withScheme), base.host?.isEmpty == false else { return nil }
-        return base.appendingPathComponent("update")
+        return base
     }
 
     static func payload(from usage: UsageResponse) -> DevicePayload {

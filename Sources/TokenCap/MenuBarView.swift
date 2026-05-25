@@ -31,6 +31,7 @@ struct MenuBarView: View {
     @ObservedObject var settings: SettingsManager
     @ObservedObject var updateService: UpdateService
     @ObservedObject var notifications: NotificationService
+    @ObservedObject var devicePusher: DevicePusher
     @State private var selectedTab: MenuTab = .usage
 
     var body: some View {
@@ -760,20 +761,69 @@ struct MenuBarView: View {
                         .foregroundStyle(.tertiary)
                 }
             } control: {
-                TextField("", text: deviceHostnameBinding)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11))
-                    .frame(width: 140)
-                    .onSubmit { pushUsageNow() }
+                HStack(spacing: 6) {
+                    reachabilityDot
+                    TextField("", text: deviceHostnameBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+                        .frame(width: 120)
+                        .onSubmit { pushUsageNow() }
+                }
+            }
+
+            if !settings.deviceHostnames.isEmpty {
+                HStack(spacing: 8) {
+                    Button { testConnection() } label: {
+                        Text("Test connection")
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                    }
+                    .buttonStyle(.plain)
+                    .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+
+                    Spacer()
+
+                    Button { settings.deviceHostnames = [] } label: {
+                        Text("Remove")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
 
-    // Push the latest usage to configured device(s) on demand
-    // (poll-driven pushes still happen via TokenCapApp's onChange hook).
+    @ViewBuilder
+    private var reachabilityDot: some View {
+        let hostname = settings.deviceHostnames.first ?? ""
+        let state = devicePusher.reachability[hostname] ?? .unknown
+        Circle()
+            .fill(dotColor(for: state))
+            .frame(width: 8, height: 8)
+    }
+
+    private func dotColor(for state: DevicePusher.ReachabilityState) -> Color {
+        switch state {
+        case .unknown: return Color.secondary.opacity(0.4)
+        case .checking: return Color.statusYellow
+        case .reachable: return Color.statusGreen
+        case .unreachable: return Color.statusRed
+        }
+    }
+
+    // Push the latest usage on Enter in the hostname field.
+    // Poll-driven pushes still happen via TokenCapApp's onChange hook.
     private func pushUsageNow() {
         guard let usage = service.usage else { return }
         let hosts = settings.deviceHostnames
-        Task { await DevicePusher.shared.push(usage: usage, to: hosts) }
+        Task { await devicePusher.push(usage: usage, to: hosts) }
+    }
+
+    private func testConnection() {
+        let hostname = settings.deviceHostnames.first ?? ""
+        guard !hostname.isEmpty else { return }
+        Task { await devicePusher.testConnection(hostname: hostname) }
     }
 }
