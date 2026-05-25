@@ -737,71 +737,103 @@ struct MenuBarView: View {
 
     // MARK: - Devices
 
-    private var deviceHostnameBinding: Binding<String> {
-        Binding(
-            get: { settings.deviceHostnames.first ?? "" },
-            set: { newValue in
-                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                settings.deviceHostnames = trimmed.isEmpty ? [] : [trimmed]
-            }
-        )
-    }
-
     @ViewBuilder
     private var devicesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("DEVICES")
+            VStack(alignment: .leading, spacing: 2) {
+                sectionTitle("DEVICES")
+                Text("Push usage to T-Display-S3 boards on your LAN")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
 
-            settingRow {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Hostname")
-                        .font(.system(size: 13))
-                    Text("tokencap.local or 192.168.1.11")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-            } control: {
-                HStack(spacing: 6) {
-                    reachabilityDot
-                    TextField("", text: deviceHostnameBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11))
-                        .frame(width: 120)
-                        .onSubmit { pushUsageNow() }
+            if settings.deviceHostnames.isEmpty {
+                Text("No devices configured")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(settings.deviceHostnames.indices, id: \.self) { index in
+                        deviceRow(at: index)
+                    }
                 }
             }
 
-            if !settings.deviceHostnames.isEmpty {
-                HStack(spacing: 8) {
-                    Button { testConnection() } label: {
-                        Text("Test connection")
-                            .font(.system(size: 11, weight: .medium))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                    }
-                    .buttonStyle(.plain)
-                    .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
-
-                    Spacer()
-
-                    Button { settings.deviceHostnames = [] } label: {
-                        Text("Remove")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
+            Button {
+                settings.deviceHostnames.append("")
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 11))
+                    Text("Add device")
+                        .font(.system(size: 11, weight: .medium))
                 }
+                .foregroundStyle(Color.brand)
+                .padding(.vertical, 4)
             }
+            .buttonStyle(.plain)
         }
     }
 
     @ViewBuilder
-    private var reachabilityDot: some View {
-        let hostname = settings.deviceHostnames.first ?? ""
+    private func deviceRow(at index: Int) -> some View {
+        let hostname = (index < settings.deviceHostnames.count) ? settings.deviceHostnames[index] : ""
         let state = devicePusher.reachability[hostname] ?? .unknown
-        Circle()
-            .fill(dotColor(for: state))
-            .frame(width: 8, height: 8)
+
+        HStack(spacing: 6) {
+            Circle()
+                .fill(dotColor(for: state))
+                .frame(width: 8, height: 8)
+
+            TextField("hostname or IP", text: hostnameBinding(at: index))
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11))
+                .onSubmit { submitRow(at: index) }
+
+            Button {
+                removeDevice(at: index)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func hostnameBinding(at index: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard index < settings.deviceHostnames.count else { return "" }
+                return settings.deviceHostnames[index]
+            },
+            set: { newValue in
+                guard index < settings.deviceHostnames.count else { return }
+                var hosts = settings.deviceHostnames
+                hosts[index] = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                settings.deviceHostnames = hosts
+            }
+        )
+    }
+
+    // Pressing Enter in a row pushes the current usage to that one board
+    // (or pings GET / if no poll has happened yet) so the dot updates.
+    // Poll-driven pushes still fan out via TokenCapApp's onChange hook.
+    private func submitRow(at index: Int) {
+        guard index < settings.deviceHostnames.count else { return }
+        let hostname = settings.deviceHostnames[index]
+        guard !hostname.isEmpty else { return }
+        if let usage = service.usage {
+            Task { await devicePusher.push(usage: usage, to: [hostname]) }
+        } else {
+            Task { await devicePusher.testConnection(hostname: hostname) }
+        }
+    }
+
+    private func removeDevice(at index: Int) {
+        guard index < settings.deviceHostnames.count else { return }
+        settings.deviceHostnames.remove(at: index)
     }
 
     private func dotColor(for state: DevicePusher.ReachabilityState) -> Color {
@@ -811,19 +843,5 @@ struct MenuBarView: View {
         case .reachable: return Color.statusGreen
         case .unreachable: return Color.statusRed
         }
-    }
-
-    // Push the latest usage on Enter in the hostname field.
-    // Poll-driven pushes still happen via TokenCapApp's onChange hook.
-    private func pushUsageNow() {
-        guard let usage = service.usage else { return }
-        let hosts = settings.deviceHostnames
-        Task { await devicePusher.push(usage: usage, to: hosts) }
-    }
-
-    private func testConnection() {
-        let hostname = settings.deviceHostnames.first ?? ""
-        guard !hostname.isEmpty else { return }
-        Task { await devicePusher.testConnection(hostname: hostname) }
     }
 }
