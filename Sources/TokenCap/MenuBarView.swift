@@ -32,7 +32,6 @@ struct MenuBarView: View {
     @ObservedObject var updateService: UpdateService
     @ObservedObject var notifications: NotificationService
     @State private var selectedTab: MenuTab = .usage
-    @State private var sendTestStatus: SendTestStatus = .idle
 
     var body: some View {
         VStack(spacing: 0) {
@@ -256,7 +255,6 @@ struct MenuBarView: View {
                 }
             }
 
-            // Devices (M1 only — temporary debug. Replaced by real DEVICES UI in M2.)
             devicesSection
 
             // Claude Code
@@ -736,12 +734,16 @@ struct MenuBarView: View {
         }
     }
 
-    // MARK: - Devices (M1 throwaway)
-    // Replaced in M2 by DevicePusher + UserDefaults-driven hostnames.
+    // MARK: - Devices
 
-    enum SendTestStatus: Equatable {
-        case idle, sending, sent
-        case failed(String)
+    private var deviceHostnameBinding: Binding<String> {
+        Binding(
+            get: { settings.deviceHostnames.first ?? "" },
+            set: { newValue in
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                settings.deviceHostnames = trimmed.isEmpty ? [] : [trimmed]
+            }
+        )
     }
 
     @ViewBuilder
@@ -751,63 +753,27 @@ struct MenuBarView: View {
 
             settingRow {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Send test message")
+                    Text("Hostname")
                         .font(.system(size: 13))
-                    Text("POSTs to http://192.168.1.11/update")
+                    Text("tokencap.local or 192.168.1.11")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
             } control: {
-                Button {
-                    Task { await sendTestMessage() }
-                } label: {
-                    Text(sendTestStatus == .sending ? "…" : "Send")
-                        .font(.system(size: 11, weight: .medium))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                }
-                .buttonStyle(.plain)
-                .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
-                .disabled(sendTestStatus == .sending)
-            }
-
-            switch sendTestStatus {
-            case .idle, .sending:
-                EmptyView()
-            case .sent:
-                Text("Sent")
+                TextField("", text: deviceHostnameBinding)
+                    .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11))
-                    .foregroundStyle(Color.statusGreen)
-            case .failed(let msg):
-                Text("Failed: \(msg)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.statusRed)
-                    .lineLimit(2)
+                    .frame(width: 140)
+                    .onSubmit { pushUsageNow() }
             }
         }
     }
 
-    private func sendTestMessage() async {
-        sendTestStatus = .sending
-
-        var request = URLRequest(url: URL(string: "http://192.168.1.11/update")!)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Data(#"{"msg":"hello from tokencap"}"#.utf8)
-        request.timeoutInterval = 2
-
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                sendTestStatus = .failed("HTTP \(code)")
-                return
-            }
-            sendTestStatus = .sent
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            if sendTestStatus == .sent { sendTestStatus = .idle }
-        } catch {
-            sendTestStatus = .failed(error.localizedDescription)
-        }
+    // Push the latest usage to configured device(s) on demand
+    // (poll-driven pushes still happen via TokenCapApp's onChange hook).
+    private func pushUsageNow() {
+        guard let usage = service.usage else { return }
+        let hosts = settings.deviceHostnames
+        Task { await DevicePusher.shared.push(usage: usage, to: hosts) }
     }
 }

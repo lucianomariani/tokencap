@@ -35,6 +35,11 @@ final class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(customConfigDir, forKey: "customConfigDir") }
     }
 
+    // Array from v1 — UI exposes one slot in M2/M3, fans out in M4.
+    @Published var deviceHostnames: [String] {
+        didSet { UserDefaults.standard.set(deviceHostnames, forKey: "deviceHostnames") }
+    }
+
     private init() {
         let defaults = UserDefaults.standard
         defaults.register(defaults: [
@@ -43,6 +48,7 @@ final class SettingsManager: ObservableObject {
             "notificationsEnabled": true,
             "enabledThresholds": [10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 85, 90],
             "analyticsEnabled": false,
+            "deviceHostnames": [String](),
         ])
 
         self.launchAtLogin = defaults.bool(forKey: "launchAtLogin")
@@ -51,6 +57,7 @@ final class SettingsManager: ObservableObject {
 
         self.analyticsEnabled = defaults.bool(forKey: "analyticsEnabled")
         self.customConfigDir = defaults.string(forKey: "customConfigDir")
+        self.deviceHostnames = defaults.stringArray(forKey: "deviceHostnames") ?? []
 
         if let saved = defaults.array(forKey: "enabledThresholds") as? [Int] {
             self.enabledThresholds = Set(saved)

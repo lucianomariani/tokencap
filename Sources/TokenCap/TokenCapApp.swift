@@ -45,6 +45,7 @@ struct TokenCapApp: App {
         .onChange(of: usageService.lastUpdated) { _, _ in
             if let usage = usageService.usage {
                 notifications.checkThresholds(usage: usage, settings: settings)
+                Task { await DevicePusher.shared.push(usage: usage, to: settings.deviceHostnames) }
             }
         }
         .onChange(of: updateService.updateAvailable) { _, available in
