@@ -54,20 +54,23 @@ final class NotificationService: ObservableObject {
         }
     }
 
-    func checkThresholds(usage: UsageResponse, settings: SettingsManager) {
+    /// Checks an account's usage against the enabled thresholds. Fired-threshold
+    /// tracking is namespaced per account id so accounts alert independently, and
+    /// notification titles are prefixed with the account label.
+    func checkThresholds(usage: AccountUsage, account: Account, settings: SettingsManager) {
         guard settings.notificationsEnabled else { return }
 
-        if let fiveHour = usage.fiveHour {
-            checkBucket(key: "session", label: "Session", bucket: fiveHour, settings: settings)
+        let prefix = account.id.uuidString
+        let name = account.label.isEmpty ? account.provider.displayName : account.label
+
+        if let primary = usage.primary {
+            checkBucket(key: "\(prefix)-session", label: "\(name) · Session", bucket: primary, settings: settings)
         }
-        if let sevenDay = usage.sevenDay {
-            checkBucket(key: "weekly_all", label: "Weekly (All)", bucket: sevenDay, settings: settings)
+        if let secondary = usage.secondary {
+            checkBucket(key: "\(prefix)-weekly_all", label: "\(name) · Weekly", bucket: secondary, settings: settings)
         }
-        if let sonnet = usage.sevenDaySonnet {
-            checkBucket(key: "weekly_sonnet", label: "Sonnet Weekly", bucket: sonnet, settings: settings)
-        }
-        if let opus = usage.sevenDayOpus {
-            checkBucket(key: "weekly_opus", label: "Opus Weekly", bucket: opus, settings: settings)
+        for item in usage.breakdown {
+            checkBucket(key: "\(prefix)-\(item.label)", label: "\(name) · \(item.label)", bucket: item.bucket, settings: settings)
         }
     }
 

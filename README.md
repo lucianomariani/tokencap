@@ -1,6 +1,6 @@
 # TokenCap
 
-> macOS menu bar app that shows your Claude Code usage in real time.
+> macOS menu bar app that shows your Claude Code (and Codex) usage in real time — across multiple accounts.
 
 > A fork of [helsky-labs/tokencap](https://github.com/helsky-labs/tokencap) with significant changes — see [Changes from upstream](#changes-from-upstream).
 
@@ -12,10 +12,14 @@
 
 ## What it shows
 
+- **Multiple accounts** — monitor e.g. a personal and a work account side by side
+- **Multiple providers** — Claude Code and OpenAI Codex
 - **Session usage** — 5-hour rolling window percentage
-- **Weekly usage** — 7-day all-models, Sonnet, and Opus breakdown
+- **Weekly usage** — 7-day all-models, Sonnet, and Opus breakdown (Claude)
 - **Extra credits** — dollar amount used vs monthly limit
 - **Color-coded levels** — green (<50%), yellow (50–80%), red (>80%)
+
+The menu bar shows a compact segment per account (e.g. `Pe 40% · Wo 80%`), colored by the account closest to its limit. Open the popover for the full per-account breakdown.
 
 ## Install
 
@@ -28,11 +32,24 @@ Download the latest `.dmg` from [GitHub Releases](https://github.com/lucianomari
 ## Requirements
 
 - macOS 14 (Sonoma) or later
-- Claude Code with an active session (`claude login`)
+- Claude Code with an active session (`claude login`), and/or the Codex CLI logged in (`codex login`)
 
 ## How it works
 
-TokenCap reads your Claude Code OAuth token from `~/.claude/.credentials.json` and polls Anthropic's usage API every 60 seconds. No account creation, no cloud sync, no telemetry.
+TokenCap reads each account's OAuth token locally and polls that provider's usage API every 60 seconds. Each account is polled independently. No account creation, no cloud sync, no telemetry.
+
+- **Claude** — reads the OAuth token from `~/.claude/.credentials.json` (or the macOS Keychain, or a custom config directory) and polls Anthropic's usage API.
+- **Codex** — reads the OAuth token from `~/.codex/auth.json` and polls the ChatGPT backend usage endpoint.
+
+## Accounts
+
+Manage accounts in **Settings → ACCOUNTS**. Each row has a label, a provider (Claude or Codex), and a credential source (**Auto**, or a specific config directory via **Browse**). Use **+ Add account** to add more.
+
+**Monitoring two Claude accounts at once** (e.g. personal + work): Claude Code stores one set of credentials per machine (`~/.claude/.credentials.json` or one Keychain entry), so logging out/in just swaps them. To watch both simultaneously, give each account its **own config directory** — for example by running each `claude login` with a different `CLAUDE_CONFIG_DIR` — then point each TokenCap account at its directory with **Browse**.
+
+Codex stores its credentials at `~/.codex/auth.json` (one login per machine), so a single Codex account is the typical setup.
+
+> **Note on Codex:** Codex doesn't publish a usage API. TokenCap reads `~/.codex/auth.json` and calls the same backend endpoint the Codex CLI's `/status` command uses. This is reverse-engineered and may break if OpenAI changes it. Codex token refresh is not automatic — if the session expires, re-run `codex login`.
 
 ## Optional: hardware dashboard
 
@@ -132,14 +149,18 @@ swift build -c release
 
 ## Known limitations
 
-- Uses an undocumented Anthropic API endpoint — may break if Anthropic changes it
-- OAuth token expires and requires re-authentication via Claude Code
+- Uses undocumented usage endpoints (Anthropic, and the Codex/ChatGPT backend) — may break if either provider changes them
+- OAuth tokens expire and require re-authentication via the provider's CLI (`claude login` / `codex login`); Codex tokens are not refreshed automatically
+- Two simultaneous Claude accounts require separate config directories (see [Accounts](#accounts))
+- The hardware dashboard push uses the Claude wire schema and is fed by your first Claude account
 - macOS only (native SwiftUI app)
 
 ## Changes from upstream
 
 This fork diverges from [helsky-labs/tokencap](https://github.com/helsky-labs/tokencap) in the following ways:
 
+- **Multiple accounts** — monitor several accounts at once (e.g. personal + work), each polled independently, with a compact multi-segment menu bar. See [Accounts](#accounts).
+- **Multiple providers** — adds OpenAI Codex alongside Claude Code (reverse-engineered usage endpoint).
 - **Configurable analytics** — the Umami website ID, endpoint, and origin are no longer hardcoded to the upstream instance. They are read from env vars or `Info.plist` keys, and analytics is disabled entirely if unset. See [Tracking app usage (optional)](#tracking-app-usage-optional).
 - **Analytics opt-out by default** — `analyticsEnabled` defaults to `false` (upstream defaulted to `true`).
 - **Threshold alert sounds** — threshold notifications can play curated audio clips (e.g. Hero quotes) instead of the default system sound.

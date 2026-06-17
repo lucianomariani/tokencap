@@ -35,6 +35,12 @@ final class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(customConfigDir, forKey: "customConfigDir") }
     }
 
+    /// Monitored accounts. Persisted as JSON. Migrated from the legacy
+    /// single-account settings on first launch of this version.
+    @Published var accounts: [Account] {
+        didSet { persistAccounts() }
+    }
+
     // Array from v1 — UI exposes one slot in M2/M3, fans out in M4.
     @Published var deviceHostnames: [String] {
         didSet { UserDefaults.standard.set(deviceHostnames, forKey: "deviceHostnames") }
@@ -64,20 +70,50 @@ final class SettingsManager: ObservableObject {
         } else {
             self.enabledThresholds = [50, 75, 80, 90]
         }
+
+        // Load accounts, or migrate from the legacy single-account config.
+        if let data = defaults.data(forKey: "accounts"),
+           let decoded = try? JSONDecoder().decode([Account].self, from: data),
+           !decoded.isEmpty {
+            self.accounts = decoded
+        } else {
+            self.accounts = Self.migratedAccounts(customConfigDir: defaults.string(forKey: "customConfigDir"))
+            // Persist the migrated default so it's stable across launches.
+            if let data = try? JSONEncoder().encode(self.accounts) {
+                defaults.set(data, forKey: "accounts")
+            }
+        }
     }
 
-    /// The resolved path to `.credentials.json`.
-    /// Priority: user-set custom dir > auto-detected dir > default `~/.claude`.
-    /// All paths are resolved through symlinks to handle dotfile setups.
-    var credentialsPath: String {
-        if let custom = customConfigDir, !custom.isEmpty {
-            return resolvingSymlinks("\(custom)/.credentials.json")
+    /// Builds the default account list from the legacy single-account settings.
+    /// A non-empty custom config dir becomes a `.directory` source; otherwise `.auto`.
+    static func migratedAccounts(customConfigDir: String?) -> [Account] {
+        let source: CredentialSource = (customConfigDir?.isEmpty == false)
+            ? .directory(customConfigDir!)
+            : .auto
+        return [Account(label: "Personal", provider: .claude, source: source)]
+    }
+
+    private func persistAccounts() {
+        if let data = try? JSONEncoder().encode(accounts) {
+            UserDefaults.standard.set(data, forKey: "accounts")
         }
-        if let detected = detectedConfigDir {
-            return resolvingSymlinks("\(detected)/.credentials.json")
-        }
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return resolvingSymlinks("\(home)/.claude/.credentials.json")
+    }
+
+    /// Adds a new account with a sensible default label.
+    func addAccount(provider: Provider = .claude) {
+        let base = provider == .claude ? "Claude" : "Codex"
+        accounts.append(Account(label: base, provider: provider, source: .auto))
+    }
+
+    func removeAccount(id: UUID) {
+        accounts.removeAll { $0.id == id }
+    }
+
+    /// Replaces an account in place (by id), preserving order.
+    func updateAccount(_ account: Account) {
+        guard let idx = accounts.firstIndex(where: { $0.id == account.id }) else { return }
+        accounts[idx] = account
     }
 
     /// Searches known locations where Claude Code stores `.credentials.json`.
