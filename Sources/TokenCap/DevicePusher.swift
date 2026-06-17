@@ -32,7 +32,7 @@ final class DevicePusher: ObservableObject {
         self.session = URLSession(configuration: config)
     }
 
-    func push(usage: UsageResponse, to hostnames: [String]) async {
+    func push(usage: AccountUsage, to hostnames: [String]) async {
         let targets: [(host: String, url: URL)] = hostnames.compactMap { host in
             guard let url = Self.updateURL(for: host) else { return nil }
             return (host, url)
@@ -114,21 +114,26 @@ final class DevicePusher: ObservableObject {
         return base
     }
 
-    static func payload(from usage: UsageResponse) -> DevicePayload {
+    // Wire schema v1 is Claude-specific (sonnet/opus). Fed from the primary
+    // Claude account's usage; Sonnet/Opus are pulled out of the breakdown.
+    static func payload(from usage: AccountUsage) -> DevicePayload {
         func intPct(_ d: Double?) -> Int? { d.map { Int($0.rounded()) } }
+        func bucket(_ label: String) -> UsageBucket? {
+            usage.breakdown.first { $0.label == label }?.bucket
+        }
         return DevicePayload(
             v: 1,
             ts: Int(Date().timeIntervalSince1970),
-            sessionPct: intPct(usage.fiveHour?.utilization),
-            sessionResetsAt: usage.fiveHour?.resetsAt,
-            weeklyAllPct: intPct(usage.sevenDay?.utilization),
-            weeklySonnetPct: intPct(usage.sevenDaySonnet?.utilization),
-            weeklyOpusPct: intPct(usage.sevenDayOpus?.utilization),
-            weeklyResetsAt: usage.sevenDay?.resetsAt,
-            extraEnabled: usage.extraUsage?.isEnabled,
-            extraPct: intPct(usage.extraUsage?.utilization),
-            extraUsedCents: usage.extraUsage?.usedCredits.map { Int($0.rounded()) },
-            extraLimitCents: usage.extraUsage?.monthlyLimit
+            sessionPct: intPct(usage.primary?.utilization),
+            sessionResetsAt: usage.primary?.resetsAt,
+            weeklyAllPct: intPct(usage.secondary?.utilization),
+            weeklySonnetPct: intPct(bucket("Sonnet")?.utilization),
+            weeklyOpusPct: intPct(bucket("Opus")?.utilization),
+            weeklyResetsAt: usage.secondary?.resetsAt,
+            extraEnabled: usage.extra?.isEnabled,
+            extraPct: intPct(usage.extra?.utilization),
+            extraUsedCents: usage.extra?.usedCredits.map { Int($0.rounded()) },
+            extraLimitCents: usage.extra?.monthlyLimit
         )
     }
 }

@@ -3,21 +3,28 @@ import SwiftUI
 @main
 struct TokenCapApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var settings = SettingsManager.shared
-    @StateObject private var usageService: UsageService
+    @StateObject private var settings: SettingsManager
+    @StateObject private var coordinator: UsageCoordinator
     @StateObject private var updateService = UpdateService.shared
     @StateObject private var devicePusher = DevicePusher.shared
+    @StateObject private var notifications: NotificationService
 
     init() {
         let settings = SettingsManager.shared
+        let notifications = NotificationService()
+        let coordinator = UsageCoordinator(
+            settings: settings,
+            notifications: notifications,
+            devicePusher: DevicePusher.shared
+        )
         _settings = StateObject(wrappedValue: settings)
-        _usageService = StateObject(wrappedValue: UsageService(settings: settings))
+        _notifications = StateObject(wrappedValue: notifications)
+        _coordinator = StateObject(wrappedValue: coordinator)
     }
-    @StateObject private var notifications = NotificationService()
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView(service: usageService, settings: settings, updateService: updateService, notifications: notifications, devicePusher: devicePusher)
+            MenuBarView(coordinator: coordinator, settings: settings, updateService: updateService, notifications: notifications, devicePusher: devicePusher)
         } label: {
             menuBarLabel
         }
@@ -25,29 +32,23 @@ struct TokenCapApp: App {
     }
 
     private var menuBarLabel: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             Image(systemName: menuBarIcon)
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(menuBarIconColor, .primary)
-            Text(usageService.menuBarText)
-                .font(.caption.monospacedDigit())
+            menuBarSegmentsView
         }
         .onAppear {
             notifications.requestPermission()
-            usageService.startPolling(interval: settings.pollInterval)
+            coordinator.startPolling(interval: settings.pollInterval)
             Task { await updateService.checkIfNeeded() }
             AnalyticsService.shared.track("app_launched", data: [
                 "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+                "accounts": "\(settings.accounts.count)",
             ])
         }
         .onChange(of: settings.pollInterval) { _, newInterval in
-            usageService.startPolling(interval: newInterval)
-        }
-        .onChange(of: usageService.lastUpdated) { _, _ in
-            if let usage = usageService.usage {
-                notifications.checkThresholds(usage: usage, settings: settings)
-                Task { await devicePusher.push(usage: usage, to: settings.deviceHostnames) }
-            }
+            coordinator.startPolling(interval: newInterval)
         }
         .onChange(of: updateService.updateAvailable) { _, available in
             if available {
@@ -56,10 +57,44 @@ struct TokenCapApp: App {
         }
     }
 
+    // MARK: - Menu Bar Segments
+
+    @ViewBuilder
+    private var menuBarSegmentsView: some View {
+        let segments = coordinator.menuBarSegments
+        if segments.isEmpty {
+            Text("--%")
+                .font(.caption.monospacedDigit())
+        } else {
+            // Cap to keep the menu bar narrow; overflow shown as "+N".
+            let shown = Array(segments.prefix(3))
+            HStack(spacing: 5) {
+                ForEach(Array(shown.enumerated()), id: \.element.id) { idx, seg in
+                    HStack(spacing: 2) {
+                        if coordinator.showLabels {
+                            Text(seg.abbrev)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(seg.text)
+                            .foregroundStyle(Color.statusColor(for: seg.level))
+                    }
+                    if idx < shown.count - 1 {
+                        Text("·").foregroundStyle(.tertiary)
+                    }
+                }
+                if segments.count > shown.count {
+                    Text("+\(segments.count - shown.count)")
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .font(.caption.monospacedDigit())
+        }
+    }
+
     // MARK: - Menu Bar Icon
 
     private var menuBarIcon: String {
-        switch usageService.sessionUsageLevel {
+        switch coordinator.worstLevel {
         case .low: return "gauge.with.needle"
         case .medium: return "gauge.with.needle"
         case .high: return "gauge.with.needle.fill"
@@ -67,7 +102,7 @@ struct TokenCapApp: App {
     }
 
     private var menuBarIconColor: Color {
-        switch usageService.sessionUsageLevel {
+        switch coordinator.worstLevel {
         case .low: return .green
         case .medium: return .yellow
         case .high: return .red

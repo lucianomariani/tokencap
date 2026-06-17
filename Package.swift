@@ -12,6 +12,11 @@ let package = Package(
             name: "TokenCap",
             path: "Sources/TokenCap",
             resources: [.process("Assets")]
-        )
+        ),
+        .testTarget(
+            name: "TokenCapTests",
+            dependencies: ["TokenCap"],
+            path: "Tests/TokenCapTests"
+        ),
     ]
 )
