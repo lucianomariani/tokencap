@@ -6,6 +6,7 @@ struct TokenCapApp: App {
     @StateObject private var settings = SettingsManager.shared
     @StateObject private var usageService: UsageService
     @StateObject private var updateService = UpdateService.shared
+    @StateObject private var devicePusher = DevicePusher.shared
 
     init() {
         let settings = SettingsManager.shared
@@ -16,7 +17,7 @@ struct TokenCapApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView(service: usageService, settings: settings, updateService: updateService, notifications: notifications)
+            MenuBarView(service: usageService, settings: settings, updateService: updateService, notifications: notifications, devicePusher: devicePusher)
         } label: {
             menuBarLabel
         }
@@ -45,6 +46,7 @@ struct TokenCapApp: App {
         .onChange(of: usageService.lastUpdated) { _, _ in
             if let usage = usageService.usage {
                 notifications.checkThresholds(usage: usage, settings: settings)
+                Task { await devicePusher.push(usage: usage, to: settings.deviceHostnames) }
             }
         }
         .onChange(of: updateService.updateAvailable) { _, available in
